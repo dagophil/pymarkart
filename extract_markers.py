@@ -1,15 +1,19 @@
 import argparse
 import json
 import os
+from typing import Generator, Tuple
 
 import scipy
 import scipy.ndimage
 import skimage.data
 
 
-def fit_square(lbl, i):
-    """Fits a square around region i in the given label image.
-    Returns center, radius, and rotation."""
+Point = Tuple[float, float]
+Marker = Tuple[Point, float]
+
+
+def create_marker_from_region(lbl: scipy.ndarray, i: int) -> Marker:
+    """Returns position and radius of the marker in region i of the given label image."""
     x_arr, y_arr = scipy.where(lbl == i)
     assert len(x_arr) == len(y_arr)
     pixel_count = len(x_arr)
@@ -19,40 +23,29 @@ def fit_square(lbl, i):
     distances = scipy.linalg.norm(distances, axis=0)
     max_index = scipy.argmax(distances)
     max_distance = distances[max_index]
-    most_distant_point = points[:, max_index]
-    angle_vector = most_distant_point - m
-    angle = scipy.math.atan2(angle_vector[1], angle_vector[0])
-    return tuple(m), max_distance, angle
+    return tuple(m), max_distance
 
 
-def extract_rectangles(img_filename: str, output_filename: str) -> None:
-    """Loads the given image, performs a marker extraction, and stores the centroids in the given output file."""
-    # Load image from disk.
-    img_raw = skimage.data.imread(img_filename, as_grey=True)
+def extract_markers(img_raw: scipy.ndarray) -> Generator[Marker, None, None]:
+    """Performs a marker extraction on the given image and returns all found markers.
 
-    # Convert image to black and white.
+    It is assumed that all markers are clearly separated. A connected black region is treated as single marker.
+    """
+    # Make a copy so that the original is unchanged.
     img = img_raw[:]
-    img[img < 0.5] = 0
-    img[img >= 0.5] = 1
 
-    # Invert colors because label image needs black background.
+    # Invert colors because marker extraction needs bright markers on dark background.
     img = 1-img
     assert isinstance(img, scipy.ndarray)
 
-    # We assume that all seats are separated.
     # Create image labels.
+    img[img < 0.5] = 0
+    img[img >= 0.5] = 1
     lbl, lbl_count = scipy.ndimage.label(img)
 
-    # Fit rectangle around each label.
-    squares = [fit_square(lbl, i) for i in range(1, lbl_count)]
-
-    # Store results in output file.
-    results = {
-        "original_image_size": img.shape,
-        "squares": squares
-    }
-    with open(output_filename, "w") as f:
-        json.dump(results, f)
+    # Extract marker of each region.
+    for i in range(1, lbl_count):
+        yield create_marker_from_region(lbl, i)
 
 
 def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -65,7 +58,7 @@ def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentP
 
 
 def main(args: argparse.Namespace=None) -> None:
-    """Calls extract_rectangles() with the given arguments.
+    """Opens the input image, performs a marker extraction, and stores the markers in the output file.
 
     Parses the command line arguments if args is None. If args is not None it should be obtained from a parser that was
     set up with initialize_arg_parser() from this module.
@@ -76,7 +69,15 @@ def main(args: argparse.Namespace=None) -> None:
         args = parser.parse_args()
     if os.path.isfile(args.output) and not args.overwrite:
         raise RuntimeError("Output file already exists:", args.output)
-    extract_rectangles(args.image, args.output)
+
+    img = skimage.data.imread(args.image, as_grey=True)
+    markers = list(extract_markers(img))
+    results = {
+        "original_image_size": img.shape,
+        "markers": markers
+    }
+    with open(args.output, "w") as f:
+        json.dump(results, f)
 
 
 if __name__ == "__main__":

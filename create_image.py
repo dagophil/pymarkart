@@ -1,15 +1,19 @@
 import argparse
 import json
 import os
-from typing import Tuple
+from typing import Iterable, Tuple
 
 import pyx
 import scipy
 import scipy.spatial
 
 
-def fill_square(canvas: pyx.canvas.canvas, centroid: Tuple[float, float], radius: float, angle: float) -> None:
-    """Draws a square with the given centroid, radius, and angle into the canvas."""
+Point = Tuple[float, float]
+Marker = Tuple[Point, float]
+
+
+def fill_square(canvas: pyx.canvas.canvas, centroid: Point, radius: float, angle: float) -> None:
+    """Draws a rotated square with the given (diagonal) radius at the given position into the canvas."""
     # Get vector (vx, vy) from centroid to first corner.
     angle += scipy.math.pi/4.0
     vx = radius * scipy.math.cos(angle)
@@ -29,21 +33,14 @@ def fill_square(canvas: pyx.canvas.canvas, centroid: Tuple[float, float], radius
     canvas.stroke(p, [pyx.deco.filled([pyx.color.rgb.black])])
 
 
-def create_image(input_filename: str, output_filename: str) -> None:
-    """Loads the square positions from the input file, draws them into an image, and saves the image in the given output
-    file.
-    """
-    # Read input squares.
-    with open(input_filename, "r") as f:
-        input_data = json.load(f)
-    squares = input_data["squares"]
-
+def create_image(markers: Iterable[Marker]) -> pyx.canvas.canvas:
+    """Draws the given markers into a canvas and returns it."""
     # Find mean radius.
-    mean_radius = scipy.mean(list(s[1] for s in squares))
+    mean_radius = scipy.mean(list(m[1] for m in markers))
     assert isinstance(mean_radius, float)
 
     # Compute distance matrix.
-    centroids = scipy.array(list(s[0] for s in squares))
+    centroids = scipy.array(list(m[0] for m in markers))
     distance_matrix = scipy.spatial.distance.pdist(centroids)
     distance_matrix = scipy.spatial.distance.squareform(distance_matrix)
     scipy.fill_diagonal(distance_matrix, scipy.inf)
@@ -53,15 +50,11 @@ def create_image(input_filename: str, output_filename: str) -> None:
     orientations = centroids - centroids[nearest_neighbors]
     angles = list(scipy.math.atan2(v[1], v[0]) for v in orientations)
 
-    # Create canvas to draw on.
+    # Draw the markers as rotated squares into a canvas.
     canvas = pyx.canvas.canvas()
-
-    # Draw the squares in the canvas.
-    for i, s in enumerate(squares):
-        fill_square(canvas, s[0], mean_radius, angles[i])
-
-    # Save the image.
-    canvas.writeEPSfile(output_filename)
+    for i, m in enumerate(markers):
+        fill_square(canvas, m[0], mean_radius, angles[i])
+    return canvas
 
 
 def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -74,7 +67,7 @@ def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentP
 
 
 def main(args: argparse.Namespace=None) -> None:
-    """Calls create_image() with the given arguments.
+    """Loads markers from the input file, draws them into an image, and saves the image as EPS file.
 
     Parses the command line arguments if args is None. If args is not None it should be obtained from a parser that was
     set up with initialize_arg_parser() from this module.
@@ -85,7 +78,11 @@ def main(args: argparse.Namespace=None) -> None:
         args = parser.parse_args()
     if os.path.isfile(args.output) and not args.overwrite:
         raise RuntimeError("Output file already exists:", args.output)
-    create_image(args.input, args.output)
+
+    with open(args.input, "r") as f:
+        input_data = json.load(f)
+    canvas = create_image(input_data["markers"])
+    canvas.writeEPSfile(args.output)
 
 
 if __name__ == "__main__":
