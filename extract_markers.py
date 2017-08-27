@@ -1,15 +1,13 @@
 import argparse
 import json
 import os
-from typing import Generator, Tuple
+from typing import Generator
 
 import scipy
 import scipy.ndimage
 import skimage.data
 
-
-Point = Tuple[float, float]
-Marker = Tuple[Point, float]
+from dto import DTOEncoder, Marker, Point
 
 
 def create_marker_from_region(lbl: scipy.ndarray, i: int) -> Marker:
@@ -23,7 +21,10 @@ def create_marker_from_region(lbl: scipy.ndarray, i: int) -> Marker:
     distances = scipy.linalg.norm(distances, axis=0)
     max_index = scipy.argmax(distances)
     max_distance = distances[max_index]
-    return tuple(m), max_distance
+    return Marker(
+        position=Point(m[0], m[1]),
+        radius=max_distance
+    )
 
 
 def extract_markers(img_raw: scipy.ndarray) -> Generator[Marker, None, None]:
@@ -49,7 +50,7 @@ def extract_markers(img_raw: scipy.ndarray) -> Generator[Marker, None, None]:
 
 
 def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    """Initializes the given argument parser."""
+    """Initializes the given argument parser with the arguments for this module."""
     parser.description = "Extracts markers from the given image and stores their centroids in the output file."
     parser.add_argument("-i", "--image", type=str, required=True, help="file name of input image")
     parser.add_argument("-o", "--output", type=str, required=True, help="output file name")
@@ -72,12 +73,10 @@ def main(args: argparse.Namespace=None) -> None:
 
     img = skimage.data.imread(args.image, as_grey=True)
     markers = list(extract_markers(img))
-    results = {
-        "original_image_size": img.shape,
-        "markers": markers
-    }
+    results = {"markers": markers}
+    result_json = json.dumps(results, cls=DTOEncoder)
     with open(args.output, "w") as f:
-        json.dump(results, f)
+        f.write(result_json)
 
 
 if __name__ == "__main__":

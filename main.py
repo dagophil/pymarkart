@@ -5,7 +5,7 @@ import extract_markers
 
 
 def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    """Initializes the given argument parser."""
+    """Initializes the given argument parser with the arguments for this module."""
     parser.description = "Executes the selected workflow."
     subparsers = parser.add_subparsers(dest="workflow", help="the executed workflow")
     subparsers.required = True
