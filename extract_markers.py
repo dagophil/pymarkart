@@ -74,9 +74,8 @@ def main(args: argparse.Namespace=None) -> None:
     img = skimage.data.imread(args.image, as_grey=True)
     markers = list(extract_markers(img))
     results = {"markers": markers}
-    result_json = json.dumps(results, cls=DTOEncoder)
     with open(args.output, "w") as f:
-        f.write(result_json)
+        json.dump(results, f, cls=DTOEncoder)
 
 
 if __name__ == "__main__":

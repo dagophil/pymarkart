@@ -78,8 +78,7 @@ def main(args: argparse.Namespace=None) -> None:
         raise RuntimeError("Output file already exists:", args.output)
 
     with open(args.input, "r") as f:
-        input_data = f.read()
-    input_data = json.loads(input_data, cls=DTODecoder)
+        input_data = json.load(f, cls=DTODecoder)
     canvas = create_image(input_data["markers"])
     canvas.writeEPSfile(args.output)
 
