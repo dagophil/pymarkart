@@ -22,14 +22,6 @@ def find_angles(markers: Sequence[Marker]) -> Generator[float, None, None]:
     scipy.fill_diagonal(distance_matrix, scipy.inf)
     nearest_neighbors = scipy.argmin(distance_matrix, axis=1)
 
-    # # Find nearest neighbors.
-    # # A point is always its own nearest neighbor, so nearest_neighbors[i, 0] == i.
-    # # The indices of the other nearest neighbors of point i are
-    # # nearest_neighbors[i, 1],
-    # # nearest_neighbors[i, 2],
-    # # nearest_neighbors[i, 3], ...
-    # nearest_neighbors = scipy.argsort(distance_matrix, axis=1)
-
     # Use direction to nearest neighbor as angle.
     for i in range(num_markers):
         n = nearest_neighbors[i]
