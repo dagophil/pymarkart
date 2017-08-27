@@ -37,21 +37,10 @@ def create_image(markers: Iterable[Marker]) -> pyx.canvas.canvas:
     mean_radius = scipy.mean(list(m.radius for m in markers))
     assert isinstance(mean_radius, float)
 
-    # Compute distance matrix.
-    centroids = scipy.array(list((m.position.x, m.position.y) for m in markers))
-    distance_matrix = scipy.spatial.distance.pdist(centroids)
-    distance_matrix = scipy.spatial.distance.squareform(distance_matrix)
-    scipy.fill_diagonal(distance_matrix, scipy.inf)
-    nearest_neighbors = scipy.argmin(distance_matrix, axis=0)
-
-    # Compute angles as angle between nearest neighbors.
-    orientations = centroids - centroids[nearest_neighbors]
-    angles = list(scipy.math.atan2(v[1], v[0]) for v in orientations)
-
     # Draw the markers as rotated squares into a canvas.
     canvas = pyx.canvas.canvas()
     for i, m in enumerate(markers):
-        fill_square(canvas, m.position, mean_radius, angles[i])
+        fill_square(canvas, m.position, mean_radius, m.orientation)
     return canvas
 
 
