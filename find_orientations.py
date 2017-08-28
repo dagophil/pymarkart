@@ -9,11 +9,12 @@ import scipy.spatial
 from dto import DTODecoder, DTOEncoder, Marker
 
 
-def find_angles(markers: Sequence[Marker]) -> Generator[float, None, None]:
+def find_angles(markers: Sequence[Marker], weight_x: float=1.0, weight_y: float=1.0) -> Generator[float, None, None]:
     """Computes the angles of the given markers and returns them."""
     # Compute distance matrix.
     positions = scipy.array(list((m.position.x, m.position.y) for m in markers))
-    distance_matrix = scipy.spatial.distance.pdist(positions)
+    weights = scipy.array([weight_x, weight_y])
+    distance_matrix = scipy.spatial.distance.pdist(positions / weights)
     distance_matrix = scipy.spatial.distance.squareform(distance_matrix)
     assert distance_matrix.shape[0] == distance_matrix.shape[1]
     num_markers = distance_matrix.shape[0]
@@ -33,6 +34,8 @@ def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentP
     """Initializes the given argument parser with the arguments for this module."""
     parser.description = "Finds the angles between the given markers."
     parser.add_argument("-i", "--input", type=str, required=True, help="input json file")
+    parser.add_argument("--weight_x", type=float, default=1.0, help="x weight when finding angles from neighbors")
+    parser.add_argument("--weight_y", type=float, default=1.0, help="y weight when finding angles from neighbors")
     return parser
 
 
@@ -50,7 +53,7 @@ def main(args: argparse.Namespace=None) -> None:
     with open(args.input, "r") as f:
         input_data = json.load(f, cls=DTODecoder)
     markers = input_data["markers"]
-    angles = find_angles(markers)
+    angles = find_angles(markers, args.weight_x, args.weight_y)
     for marker, angle in zip(markers, angles):
         assert isinstance(marker, Marker)
         marker.orientation = angle
