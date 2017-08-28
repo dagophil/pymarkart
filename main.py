@@ -4,6 +4,7 @@ import collections
 import create_image
 import extract_markers
 import find_orientations
+import refine_orientation
 
 
 Workflow = collections.namedtuple("Workflow", ["main", "init_parser"])
@@ -11,6 +12,7 @@ Workflow = collections.namedtuple("Workflow", ["main", "init_parser"])
 WORKFLOWS = {
     "extract_markers": Workflow(extract_markers.main, extract_markers.initialize_arg_parser),
     "find_orientations": Workflow(find_orientations.main, find_orientations.initialize_arg_parser),
+    "refine_orientations": Workflow(refine_orientation.main, refine_orientation.initialize_arg_parser),
     "create_image": Workflow(create_image.main, create_image.initialize_arg_parser)
 }
 
