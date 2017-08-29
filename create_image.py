@@ -31,16 +31,89 @@ def fill_square(canvas: pyx.canvas.canvas, position: Point, radius: float, angle
     canvas.stroke(p, [pyx.deco.filled([pyx.color.rgb.black])])
 
 
-def create_image(markers: Iterable[Marker]) -> pyx.canvas.canvas:
+def draw_frame(canvas: pyx.canvas.canvas,
+               frame_ratio: float=None,
+               frame_scale: float=1.0,
+               double_line: bool=False) -> None:
+    """Draws a frame around the content of the given canvas.
+
+    Sets the frame ratio to frame_ratio if it is not None.
+    Sets the frame size to frame_scale * content_size.
+    Draws two line with different line widths if double_line is True.
+    """
+    # Get bounding box of current canvas content.
+    b = canvas.bbox()
+    x0 = b.left()
+    x1 = b.right()
+    y0 = b.bottom()
+    y1 = b.top()
+    assert x0 <= x1
+    assert y0 <= y1
+
+    # Get the scaling from the given scale and ratio.
+    scale_x = frame_scale
+    scale_y = frame_scale
+    if frame_ratio is not None:
+        desired_width = frame_ratio * (y1-y0)
+        desired_height = (x1-x0) / frame_ratio
+        if x1-x0 < desired_width:
+            # Scale in x but keep the content centered in the bounding box.
+            s = desired_width / (x1-x0)
+            scale_x *= s
+            # x0, x1 = (x0*(1+s) + x1*(1-s)) / 2, (x0*(1-s) + x1*(1+s)) / 2
+        else:
+            # Scale in y but keep the content centered in the bounding box.
+            s = desired_height / (y1-y0)
+            scale_y *= s
+            # y0, y1 = (y0*(1+s) + y1*(1-s)) / 2, (y0*(1-s) + y1*(1+s)) / 2
+
+    # Apply the scaling to the frame coordinates.
+    x0, x1 = (x0*(1+scale_x) + x1*(1-scale_x)) / 2, (x0*(1-scale_x) + x1*(1+scale_x)) / 2
+    y0, y1 = (y0*(1+scale_y) + y1*(1-scale_y)) / 2, (y0*(1-scale_y) + y1*(1+scale_y)) / 2
+
+    # Find the line width depending on the content size.
+    line_width = min(x1-x0, y1-y0) / 200
+
+    # Draw the inner frame.
+    p = pyx.path.line(x0, y0, x1, y0) \
+        << pyx.path.line(x1, y0, x1, y1) \
+        << pyx.path.line(x1, y1, x0, y1)
+    p.append(pyx.path.closepath())
+    canvas.stroke(p, [pyx.style.linewidth(line_width)])
+
+    # Draw the outer frame.
+    if double_line:
+        x0 -= 2*line_width
+        x1 += 2*line_width
+        y0 -= 2*line_width
+        y1 += 2*line_width
+        p = pyx.path.line(x0, y0, x1, y0) \
+            << pyx.path.line(x1, y0, x1, y1) \
+            << pyx.path.line(x1, y1, x0, y1)
+        p.append(pyx.path.closepath())
+        canvas.stroke(p, [pyx.style.linewidth(line_width/2)])
+
+
+def create_image(markers: Iterable[Marker],
+                 use_mean_radius: bool=False,
+                 frame_ratio: float=None,
+                 frame_scale: float=1.0,
+                 double_frame_line: bool=False) -> pyx.canvas.canvas:
     """Draws the given markers into a canvas and returns it."""
-    # Find mean radius.
-    mean_radius = scipy.mean(list(m.radius for m in markers))
-    assert isinstance(mean_radius, float)
+    mean_radius = None
+    if use_mean_radius:
+        mean_radius = scipy.mean(list(m.radius for m in markers))
+        assert isinstance(mean_radius, float)
 
     # Draw the markers as rotated squares into a canvas.
     canvas = pyx.canvas.canvas()
     for i, m in enumerate(markers):
-        fill_square(canvas, m.position, mean_radius, m.orientation)
+        r = mean_radius or m.radius
+        fill_square(canvas, m.position, r, m.orientation)
+
+    # Draw the frame.
+    draw_frame(canvas, frame_ratio=frame_ratio, frame_scale=frame_scale, double_line=double_frame_line)
+
     return canvas
 
 
@@ -50,6 +123,10 @@ def initialize_arg_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentP
     parser.add_argument("-i", "--input", type=str, required=True, help="input file name")
     parser.add_argument("-o", "--output", type=str, required=True, help="output file name")
     parser.add_argument("--overwrite", action="store_true", help="overwrite output file if it already exists")
+    parser.add_argument("--use_mean_radius", action="store_true", help="use mean marker radius for all markers")
+    parser.add_argument("--frame_ratio", type=float, default=None, help="use given ratio for the frame")
+    parser.add_argument("--frame_scale", type=float, default=1.0, help="size of frame relative to content size")
+    parser.add_argument("--double_frame_line", action="store_true", help="draw the frame with two lines")
     return parser
 
 
@@ -68,8 +145,15 @@ def main(args: argparse.Namespace=None) -> None:
 
     with open(args.input, "r") as f:
         input_data = json.load(f, cls=DTODecoder)
-    canvas = create_image(input_data["markers"])
-    canvas.writeEPSfile(args.output)
+    canvas = create_image(input_data["markers"],
+                          use_mean_radius=args.use_mean_radius,
+                          frame_ratio=args.frame_ratio,
+                          frame_scale=args.frame_scale,
+                          double_frame_line=args.double_frame_line)
+
+    page = pyx.document.page(canvas, fittosize=True, paperformat=pyx.document.paperformat.A4)
+    doc = pyx.document.document([page])
+    doc.writeEPSfile(args.output)
 
 
 if __name__ == "__main__":
