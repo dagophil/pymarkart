@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Iterable
+from typing import Iterable, Tuple
 
 import pyx
 import scipy
@@ -31,6 +31,44 @@ def fill_square(canvas: pyx.canvas.canvas, position: Point, radius: float, angle
     canvas.stroke(p, [pyx.deco.filled([pyx.color.rgb.black])])
 
 
+def get_bounding_box(canvas: pyx.canvas.canvas) \
+        -> Tuple[pyx.unit.length, pyx.unit.length, pyx.unit.length, pyx.unit.length]:
+    """Returns a tuple (x0, x1, y0, y1) with the bounding box of the given canvas."""
+    b = canvas.bbox()
+    return b.left(), b.right(), b.bottom(), b.top()
+
+
+def get_scale_from_ratio(ratio: float, width: pyx.unit.length, height: pyx.unit.length) -> Tuple[float, float]:
+    """Returns a pair (scale_x, scale_y) that, when multiplied with (width, height), complies with the given ratio.
+
+    Mathematically spoken, the returned values satisfy the equation (width*scale_x)/(height*scale_y) == ratio.
+    The following constraints are fulfilled:
+        * The scales are enlarging, not shrinking (scale_x >= 1.0, scale_y >= 1.0).
+        * The scales are minimal (scale_x == 1.0 or scale_y == 1.0).
+    """
+    desired_width = height * ratio
+    if width < desired_width:
+        return desired_width / width, 1.0
+    desired_height = width / ratio
+    if height < desired_height:
+        return 1.0, desired_height / height
+    return 1.0, 1.0
+
+
+def apply_scale_centered(scale: float, a: pyx.unit.length, b: pyx.unit.length) \
+        -> Tuple[pyx.unit.length, pyx.unit.length]:
+    """Returns a scaled version (x, y) of (a, b) such that the difference of a and b is scaled by the given scale but
+    their mid point stays unchanged.
+
+    Mathematically spoken, the returned values satisfy the following equations:
+        (1) y-x == scale*(b-a)
+        (2) (x+y)/2 == (a+b)/2
+    """
+    a_scaled = (a*(1+scale) + b*(1-scale)) / 2
+    b_scaled = (a*(1-scale) + b*(1+scale)) / 2
+    return a_scaled, b_scaled
+
+
 def draw_frame(canvas: pyx.canvas.canvas,
                frame_ratio: float=None,
                frame_scale: float=1.0,
@@ -42,11 +80,7 @@ def draw_frame(canvas: pyx.canvas.canvas,
     Draws two line with different line widths if double_line is True.
     """
     # Get bounding box of current canvas content.
-    b = canvas.bbox()
-    x0 = b.left()
-    x1 = b.right()
-    y0 = b.bottom()
-    y1 = b.top()
+    x0, x1, y0, y1 = get_bounding_box(canvas)
     assert x0 <= x1
     assert y0 <= y1
 
@@ -54,24 +88,15 @@ def draw_frame(canvas: pyx.canvas.canvas,
     scale_x = frame_scale
     scale_y = frame_scale
     if frame_ratio is not None:
-        desired_width = frame_ratio * (y1-y0)
-        desired_height = (x1-x0) / frame_ratio
-        if x1-x0 < desired_width:
-            # Scale in x but keep the content centered in the bounding box.
-            s = desired_width / (x1-x0)
-            scale_x *= s
-            # x0, x1 = (x0*(1+s) + x1*(1-s)) / 2, (x0*(1-s) + x1*(1+s)) / 2
-        else:
-            # Scale in y but keep the content centered in the bounding box.
-            s = desired_height / (y1-y0)
-            scale_y *= s
-            # y0, y1 = (y0*(1+s) + y1*(1-s)) / 2, (y0*(1-s) + y1*(1+s)) / 2
+        ratio_scale_x, ratio_scale_y = get_scale_from_ratio(frame_ratio, x1-x0, y1-y0)
+        scale_x *= ratio_scale_x
+        scale_y *= ratio_scale_y
 
     # Apply the scaling to the frame coordinates.
-    x0, x1 = (x0*(1+scale_x) + x1*(1-scale_x)) / 2, (x0*(1-scale_x) + x1*(1+scale_x)) / 2
-    y0, y1 = (y0*(1+scale_y) + y1*(1-scale_y)) / 2, (y0*(1-scale_y) + y1*(1+scale_y)) / 2
+    x0, x1 = apply_scale_centered(scale_x, x0, x1)
+    y0, y1 = apply_scale_centered(scale_y, y0, y1)
 
-    # Find the line width depending on the content size.
+    # Get a line width relative to the content size.
     line_width = min(x1-x0, y1-y0) / 200
 
     # Draw the inner frame.
@@ -99,7 +124,8 @@ def create_image(markers: Iterable[Marker],
                  frame_ratio: float=None,
                  frame_scale: float=1.0,
                  double_frame_line: bool=False) -> pyx.canvas.canvas:
-    """Draws the given markers into a canvas and returns it."""
+    """Draws the given markers into a canvas and returns the canvas."""
+    # Find mean radius.
     mean_radius = None
     if use_mean_radius:
         mean_radius = scipy.mean(list(m.radius for m in markers))
